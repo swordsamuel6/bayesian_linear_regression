@@ -1,0 +1,206 @@
+---
+title: "Bayesian Regression: Basic Theory, Analysis, and Application"
+author: "Samuel Sword"
+format:
+  html:
+    toc: true
+self-contained: true
+link-external-newwindow: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## **Introduction**
+Linear regression analysis is often performed under a frequentest approach, relying on repeated sampling methods in order to determine probability statement (Baldwin 2016). In regression with a frequentest approach, model parameters are generally determined using methods such as Ordinary Least Squares (OLS) or Maximum Likelihood Estimate (MLE). While this approach can be effective, another approach to regression (and more generally, statistics as a whole), exists: the Bayesian approach. In Bayesian regression, model parameters are not viewed as fixed values derived using estimation methods, but as probability distributions that can allow for the expression of uncertainty in parameter values (Wundervald 2019). In this report, I aim to examine some of the fundamental ideas underlying the Bayesian approach, analyze it and compare it to the Frequentest approach, and provide an example of creating a Bayesian linear regression model in R.
+
+## **Fundamental Concepts of Bayesian Regression**
+
+### Bayes' Theorem
+Bayesian regression is founded in Bayes' theorem, which describes the conditional probability of an event given a certain belief about the event or given certain prior information respective to that event. Bayes' theorem states the following:
+
+$$\begin{aligned}P(A|B)=\dfrac{P(B|A)P(A)}{P(B)}\end{aligned}$$
+
+In the context of Bayesian regression, $P(A)$ is referred to as the *prior probability*, and $P(A|B)$ as the *posterior probability*, due to it's dependency on event $B$ (Wundervald 2019). Using this theorem, we can proceed to form a linear regression.
+
+### Response and Parameter Distributions
+
+As stated before, Bayes regression is formulated using probability distributions instead of estimated values. Then, for example, with a response sampled from the normal distribution, the Bayesian linear regression model would be:
+
+$$\begin{aligned}y \sim N(\beta^TX, \sigma^2I)\end{aligned}$$
+
+where $y$ is generated from a normal distribution with mean $\beta^T$ (the transposed parameter matrix multiplied by the predictor matrix), and variance $\sigma^2I$
+
+The model parameters are also assumed to have come from a distribution. Given a set of training data, we can calculate the posterior probability of the parameters $\beta$ as:
+
+$$\begin{aligned}P(\beta|data)=\dfrac{P(data|\beta)P(\beta)}{P(data)}\end{aligned}$$
+
+The probability of the data given $\beta$, or $P(data|\beta)$, is referred to as the *likelihood*.
+
+Sometimes a distribution for the priors is known or has been reasonably estimated, in which case that distribution is implemented. Otherwise, non-informative distributions can be used. For regression, the normal distribution is often used (Baldwin 2016).
+
+The denominator, $P(data)$ doesn't actually need to be specified in most cases. Moreover, the posterior distribution can be shown to be proportional to the likelihood times the prior (McElreath 2016):
+
+$$\begin{aligned}P(\beta|data)\propto P(data|\beta)P(\beta)\end{aligned}$$
+
+
+### Markov Chain Monte Carlo
+In Bayesian regression, the posterior distribution is determined using the given data as well as information regarding the prior. However, often times a posterior doesn't conform to a known probability distribution. In this case, Markov Chain Monte Carlo methods are used to simulate random draws from the posterior distribution (Baldwin 2016).
+
+
+## **Analysis of the Bayesian Approach**
+
+As has become apparent, there are some significant differences between the Frequentest approach and the Bayesian approach to regression. Whereas parameters in the frequentest approach are viewed as fixed values and represented by point estimates, the parameters in Bayesian regression are viewed as random variables with probability distributions (Baldwin 2016). 
+
+The Bayesian approach also allows for the inclusion of prior information about the parameters. This aspect of the Bayesian model is probably the most important thing about it. As a result, deciding on effective priors for the model is essential, as different priors can lead to completely different model estimations. Furthermore, Bayesian models allow us to quantify the uncertainty in our model, as the result of Bayesian linear regression is a distribution; the more data we have, the less spread out the distribution will be. Furthermore, as data size increases, the effect of the prior on the posterior is mitigated. Thus, it can be seen that as the number of observations used to fit the model approaches infinity, the distribution converges to a single point. That value ends up being the same value as the frequentest derived parameter value (Wundervald 2019).
+
+One well known caveat in Frequentest regression is the negative effect that small amounts of data can have on the performance and reliability of the model. With few observations, there is more uncertainty about the parameters derived in the model, and problems such as over fitting can occur. However, another strength of the Bayesian approach to regression is that it can still perform well even when insufficient data is present because it is influenced by the presence of priors. Similarly to the fact that the priors become less influential as data points increase, inversely, they become more important as data points decrease. It is worth noting that in cases such as this, the model wouldn't be expected to change much from the priors, since there is little data to influence it. Nonetheless, even in models which have very low numbers of data points, a model formulated using the Bayesian approach is generally going to be more reliable than a model using the Frequentest approach (Wundervald 2019).
+
+## **Application**
+
+For this application, a Bayesian linear regression will be made using Boston Housing data. To form the Bayesian LR, the *rstanarm* package is used. The following R code is based off of a tutorial from rpubs.com. 
+
+```{r}
+suppressPackageStartupMessages(library(mlbench))
+suppressPackageStartupMessages(library(rstanarm))
+suppressPackageStartupMessages(library(bayestestR))
+suppressPackageStartupMessages(library(bayesplot))
+suppressPackageStartupMessages(library(insight))
+suppressPackageStartupMessages(library(broom))
+data("BostonHousing")
+str(BostonHousing)
+```
+
+### OLS Model
+
+Firstly, only three of the variables will be used in order to simplify the process. We'll use two numeric variables `age` and `dis`, and one categorical variables `chas`. Our response will be `medv` (the median value of owners' homes.)
+```{r}
+bost_simplified <- BostonHousing[,c("medv","age","dis","chas")]
+head(bost_simplified)
+```
+
+Let's first view a model formed using OLS:
+```{r}
+frequentest_model<-lm(medv~., data=bost_simplified)
+tidy(frequentest_model)
+```
+We can see that that `dis` is statistically insignificant according to the OLS model. It will be interesting to see if we find the same insight when we fit the Bayesian LR model.
+
+### Bayesian Model
+The syntax for fitting a Bayesian model using the *stan_glm* function is nearly identical to that of the *lm* function.
+```{r}
+bayes_model <- stan_glm(medv~., data=bost_simplified)
+```
+```{r}
+print(bayes_model, digits = 3)
+```
+The computed median for each parameter are the medians found from the MCMC simulations, and `MAD_SD` is the median absolute deviation from the MCMC simulations as well. `MAD_SD` is used instead of standard deviation because it is more robust to long-tailed distributions.
+
+#### MCMC visualizations
+Let's visualize the MCMC simulations for each predictor:
+```{r}
+mcmc_dens(bayes_model, pars = c("age"))+
+  vline_at(-0.143, col="red")
+```
+```{r}
+mcmc_dens(bayes_model, pars = c("dis"))+
+  vline_at(-0.243, col="red")
+```
+```{r}
+mcmc_dens(bayes_model, pars = c("chas1"))+
+  vline_at(7.502, col="red")
+```
+As we can see, the `Median` calculation in the summary of `bayes_model` is the median calculated from the MCMC simulations. As such, we can see that this is how point estimates for Bayesian models are formed. Even though the Bayesian approach is focused on the probability distributions of parameters instead of their specific values, we can still obtain specific estimates based on the distributions.
+
+### Model Evaluation
+We can use the *describe_posterior* function from the *bayestestR* package to analyze the model we have.
+```{r}
+describe_posterior(bayes_model)
+```
+We get some important statistics here:
+
+* `Median`: The same median computed from the MCMC simulations as the model summary
+* `CI`: CI stands for Credible Interval, which can be computed using the highest density interval HDI (default) or the equal-tailed interval ETI. A 95% CI tells us range of values for which the probability of seeing those values is 95%. This does differ from the interpretation of the confidence interval, and the two don't always coincide. However, in this case we can see that they are comparable with one another.
+```{r}
+confint(frequentest_model)
+```
+* `pd`: Probability of Direction. This is the probability that the parameter is of the same sign (+/-) as the calculated median. A high pd is good. This is generally considered to be the best equivalent for the p-value.
+
+* `ESS`: effective sample size. it captures how many independent draws contain the same amount of information as the dependent sample obtained by the MCMC algorithm, the higher the ESS the better. The threshold used in practice is 400.
+
+If the posterior paramaters are distributed in a normal-like manner, we would expect their central statistics to be similar. Let's check the mean, median, and Maximum A posteriori (MAP) of each parameter to if this is the case:
+```{r}
+post_params <- get_parameters(bayes_model)
+
+mcmc_dens(bayes_model, pars=c("age"))+
+  vline_at(median(post_params$age), col="red")+
+  vline_at(mean(post_params$age), col="yellow")+
+  vline_at(map_estimate(post_params$age), col="green")
+mcmc_dens(bayes_model, pars=c("dis"))+
+  vline_at(median(post_params$dis), col="red")+
+  vline_at(mean(post_params$dis), col="yellow")+
+  vline_at(map_estimate(post_params$dis), col="green")
+mcmc_dens(bayes_model, pars=c("chas1"))+
+  vline_at(median(post_params$chas1), col="red")+
+  vline_at(mean(post_params$chas1), col="yellow")+
+  vline_at(map_estimate(post_params$chas1), col="green")
+```
+They all seem to be normally (or normally-like) distributed.
+
+### Inference
+In the same manner as the Frequentest approach, we can use some of the statistics produced by the model to infer on the significance of specific parameters. 
+```{r}
+hdi(bayes_model)
+eti(bayes_model)
+```
+The above functions produce the Highest Density Interval and Equal-Tailed Interval, respectively. As mentioned above, those are the two methods used in computing the credible interval. We can see that the intervals for `dis` both contain 0, suggesting that `dis` is statistically insignificant.
+
+Furthermore, we can use the *rope* function to test the probability that a parameter falls within the Region of Practical Equivalence. If has a high probability, we can assume it to be insignificant.
+```{r}
+rope(post_params$age)
+rope(post_params$dis)
+rope(post_params$chas1)
+```
+`dis` has around around a 20-21% (the specific value changes based on each iteration of the MCMC iteration) chance of falling within the ROPE, suggesting it to be insignificant. 
+
+Note that the Bayesian and OLS models produce similar estimates and inferences. This might be caused by the fact that the normality assumption is satisfied in the Frequentest model and the normal prior used in the Bayes model. While these two models share similar parameter estimates in this case, this is not always guaranteed.
+
+```{r}
+shapiro.test(frequentest_model$residuals)
+```
+We can see that the Frequentest model passes the statistical test for normal distribution of errors.
+
+### Computational Differences
+```{r}
+start.time <- Sys.time()
+
+frequentest_model<-lm(medv~., data=bost_simplified)
+
+end.time <- Sys.time()
+time.taken_freq <- round(end.time - start.time,2)
+```
+
+```{r}
+start.time <- Sys.time()
+
+bayes_model <- stan_glm(medv~., data=bost_simplified)
+
+end.time <- Sys.time()
+time.taken_bayes <- round(end.time - start.time,2)
+```
+```{r}
+time.taken_freq
+time.taken_bayes
+```
+We can see that the OLS model is significantly more efficient than the Bayes model, likely because the Bayes undergoes the MCMC iterations. With larger data sets (this one has only 506 observations) or more complicated models, the OLS model could prove to have significant advantages over the Bayes model in terms of efficiency. Thus, in a situation similar to this where the two models produce similar results and we don't have a preference of one over the other, I would suggest using a Frequentest model over a Bayes model.
+
+  
+## **References**
+Baldwin, S. A., & Larson, M. J. (2017). An introduction to using Bayesian linear regression with clinical data. Behaviour research and therapy, 98, 58–75. https://doi.org/10.1016/j.brat.2016.12.016
+
+Liu, C. (2020). Bayesian linear regression. RPubs. https://rpubs.com/Qsheep/BayesianLinearRegression 
+
+McElreath, R. (2016). Statistical Rethinking: A Bayesian Course with Examples in R and Stan (1st ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315372495
+
+Smith, A. F. M. (1973). A General Bayesian Linear Model. Journal of the Royal Statistical Society. Series B (Methodological), 35(1), 67–75. http://www.jstor.org/stable/2985129
+
+Wundervald, Bruna. (2019). Bayesian Linear Regression. 10.13140/RG.2.2.28385.97121.
